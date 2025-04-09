@@ -1,0 +1,2 @@
+# corelang
+random exercise
