@@ -15,6 +15,7 @@ module Lang
     prettyPrint
   )
 where
+import Data.List (intercalate)
 
 type Ident = String
 
@@ -27,6 +28,8 @@ type CoreProgram = Program Ident
 type ScDefn a = (Ident, [a], Expr a)
 
 type CoreScDefn = ScDefn Ident
+
+type CoreExpr = Expr Ident
 
 data Expr a
   = EVar Ident
@@ -60,24 +63,33 @@ preludeDefs =
   ]
 
 prettyPrint :: CoreProgram -> String
-prettyPrint [] = ""
-prettyPrint ((name, args, body) : rest) =
-  name ++ " " ++ unwords args ++ " = " ++ showExpr body ++ "\n" ++ prettyPrint rest
+prettyPrint = unlines . map formatScDef
     where
+        formatScDef (name, args, body) = 
+            name ++ " " ++ unwords args ++ " = " ++ showExpr body
+
         showExpr (EVar x) = x
         showExpr (ENum n) = show n
-        showExpr (ECon n m) = "C" ++ show n ++ " " ++ show m
-        showExpr (EApp e1 e2) = "(" ++ showExpr e1 ++ " " ++ showExpr e2 ++ ")"
+        showExpr (ECon tag arity) = "Pack{" ++ show tag ++ "," ++ show arity ++ "}"
+        showExpr (EApp e1 e2) = showExpr e1 ++ " " ++ showAtom e2
         showExpr (ELet isRec defs body) =
-            let name = if isRec then "letrec" else "let"
-                defStr = unwords [x ++ " = " ++ showExpr e | (x, e) <- defs]
-                in name ++ " " ++ defStr ++ " in " ++ showExpr body
+            let keyword = if isRec then "letrec" else "let"
+                defStrs = map formatDef defs
+            in keyword ++ " " ++ intercalate "; " defStrs ++ " in " ++ showExpr body
         showExpr (ECase e alts) =
-            let altStr = unwords [showAlt (n, xs, e) | (n, xs, e) <- alts]
-                showAlt (n, xs, e) =
-                    let argStr = unwords xs
-                        in "C" ++ show n ++ " " ++ argStr ++ " -> " ++ showExpr e
-                in "case " ++ showExpr e ++ " of " ++ altStr
-        showExpr (ELam xs e) =
-            let argStr = unwords xs
-                in "(\\" ++ argStr ++ " -> " ++ showExpr e ++ ")"
+            "case " ++ showExpr e ++ " of " ++ 
+            intercalate "; " (map formatAlt alts)
+        showExpr (ELam args body) = 
+            "(\\" ++ unwords args ++ " -> " ++ showExpr body ++ ")"
+
+        formatDef (name, expr) = name ++ " = " ++ showExpr expr
+        
+        formatAlt (tag, args, expr) = 
+            "<" ++ show tag ++ "> " ++ unwords args ++ " -> " ++ showExpr expr
+        
+        showAtom (EVar x) = x
+        showAtom (ENum n) = show n
+        showAtom e = "(" ++ showExpr e ++ ")"
+
+mkMultiAp :: Int -> CoreExpr -> CoreExpr -> CoreExpr
+mkMultiAp n e1 e2 = foldl EApp e1 (replicate n e2)
